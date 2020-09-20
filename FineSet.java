@@ -52,9 +52,10 @@ class FineSet<T> extends AbstractSet<T> {
   public boolean add(T v) {
     Node<T> x = new Node<>(v);    // 1
     Node<T> p = findNode(x.key);  // 2
+    Node<T> q = p.next;           // 2
     boolean done = addNode(p, x); // 3
     if (done) size.incrementAndGet(); // 4
-    unlockNode(p); // 5
+    unlockPair(p, q); // 5
     return done;
   }
 
@@ -65,10 +66,11 @@ class FineSet<T> extends AbstractSet<T> {
   @Override
   public boolean remove(Object v) {
     int k = v.hashCode();
-    Node<T> p = findNode(k);          // 1
+    Node<T> p = findNode(k); // 1
+    Node<T> q = p.next;      // 1
     boolean done = removeNode(p, k);  // 2
     if (done) size.decrementAndGet(); // 3
-    unlockNode(p); // 4
+    unlockPair(p, q); // 4
     return done;
   }
 
@@ -78,9 +80,10 @@ class FineSet<T> extends AbstractSet<T> {
   @Override
   public boolean contains(Object v) {
     int k = v.hashCode();
-    Node<T> p = findNode(k);       // 1
-    boolean has = p.next.key == k; // 2
-    unlockNode(p); // 3
+    Node<T> p = findNode(k);  // 1
+    Node<T> q = p.next;       // 1
+    boolean has = q.key == k; // 2
+    unlockPair(p, q); // 3
     return has;
   }
 
@@ -107,7 +110,8 @@ class FineSet<T> extends AbstractSet<T> {
   // 2. As long as key too low:
   // 3. Traverse in hand-holding fashion.
   private Node<T> findNode(int k) {
-    Node<T> p = lockNode(head); // 1
+    Node<T> p = head;
+    lockPair(p); // 1
     while (p.next.key < k) // 2
       p = nextNode(p);     // 3
     return p;
@@ -115,18 +119,16 @@ class FineSet<T> extends AbstractSet<T> {
   
   // 1. Lock 1st node.
   // 2. Lock 2nd node.
-  private Node<T> lockNode(Node<T> p) {
+  private void lockPair(Node<T> p) {
     p.lock();      // 1
     p.next.lock(); // 2
-    return p;
   }
 
   // 1. Unlock 2nd node.
   // 2. Unlock 1st node.
-  private Node<T> unlockNode(Node<T> p) {
-    p.next.unlock(); // 1
-    p.unlock();      // 2
-    return p;
+  private void unlockPair(Node<T> p, Node<T> q) {
+    q.unlock(); // 1
+    p.unlock(); // 2
   }
 
   // 1. Unlock 1st node.
@@ -142,12 +144,13 @@ class FineSet<T> extends AbstractSet<T> {
   @Override
   public Iterator<T> iterator() {
     Collection<T> a = new ArrayList<>();
-    Node<T> p = lockNode(head);
+    Node<T> p = head;
+    lockPair(p);
     while (p.next.next != null) {
       a.add(p.next.value);
       p = nextNode(p);
     }
-    unlockNode(p);
+    unlockPair(p, p.next);
     return a.iterator();
   }
 
