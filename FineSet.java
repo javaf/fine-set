@@ -1,7 +1,7 @@
 import java.util.*;
 import java.util.concurrent.atomic.*;
 
-// Coarse Set is a collection of unique elements
+// Fine Set is a collection of unique elements
 // maintained as a linked list. The list of nodes
 // are arranged in ascending order by their key,
 // which is obtained using `hashCode()`. This
@@ -11,13 +11,25 @@ import java.util.concurrent.atomic.*;
 // and maximum key values respectively. These
 // sentinel nodes are not part of the set.
 // 
-// It uses a common, coarse-grained lock, for all
-// method calls. This set performs well only when
-// contention is low. If however, contention is
-// high, despite the performance of lock, all
-// methods calls will be essential sequential. The
-// main advantage of this algorithms is that its
-// obviously correct.
+// Each node has an associated lock (fine-grained)
+// that enables locking specific nodes, instead of
+// locking down the whole list for all method
+// calls. Traversing the list (find) is done in
+// a hand-holding manner, as children do with an
+// overhead ladder. Initially two nodes are locked.
+// While moving to the next node, we unlock the
+// first node, and lock the third node, and so on.
+// This prevents any thread from adding or
+// removing threads in between, allowing them to
+// execute in pipelined fashion.
+// 
+// As this set uses fine-grained locks (per node),
+// it performs well when contention is medium. Due
+// to acquiring of locks in hand-holding fashion,
+// threads traversing the list concurrently will
+// be stacked behind each other. This forced
+// pipelining occurs even if they want to modify
+// completely different parts of the list.
 
 class FineSet<T> extends AbstractSet<T> {
   final AtomicInteger size;
