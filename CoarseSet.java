@@ -1,5 +1,4 @@
 import java.util.*;
-import java.util.concurrent.locks.*;
 import java.util.concurrent.atomic.*;
 
 // Coarse Set is a collection of unique elements
@@ -21,7 +20,6 @@ import java.util.concurrent.atomic.*;
 // obviously correct.
 
 class CoarseSet<T> extends AbstractSet<T> {
-  final Lock lock;
   final AtomicInteger size;
   final Node<T> head;
   // lock: common (coarse) lock for set
@@ -29,7 +27,6 @@ class CoarseSet<T> extends AbstractSet<T> {
   // head: points to begin of nodes in set
 
   public CoarseSet() {
-    lock = new ReentrantLock();
     size = new AtomicInteger(0);
     head = new Node<>(null, Integer.MIN_VALUE);
     head.next = new Node<>(null, Integer.MAX_VALUE);
@@ -44,11 +41,10 @@ class CoarseSet<T> extends AbstractSet<T> {
   @Override
   public boolean add(T v) {
     Node<T> x = new Node<>(v);    // 1
-    lock.lock();                  // 2
-    Node<T> p = findNode(x.key);  // 3
-    boolean done = addNode(p, x); // 4
-    if (done) size.incrementAndGet(); // 5
-    lock.unlock(); // 6
+    Node<T> p = findNode(x.key);  // 2
+    boolean done = addNode(p, x); // 3
+    if (done) size.incrementAndGet(); // 4
+    unlockNode(p); // 5
     return done;
   }
 
@@ -60,11 +56,10 @@ class CoarseSet<T> extends AbstractSet<T> {
   @Override
   public boolean remove(Object v) {
     int k = v.hashCode();
-    lock.lock(); // 1
-    Node<T> p = findNode(k);          // 2
-    boolean done = removeNode(p, k);  // 3
-    if (done) size.decrementAndGet(); // 4
-    lock.unlock(); // 5
+    Node<T> p = findNode(k);          // 1
+    boolean done = removeNode(p, k);  // 2
+    if (done) size.decrementAndGet(); // 3
+    unlockNode(p); // 4
     return done;
   }
 
@@ -75,10 +70,9 @@ class CoarseSet<T> extends AbstractSet<T> {
   @Override
   public boolean contains(Object v) {
     int k = v.hashCode();
-    lock.lock(); // 1
-    Node<T> p = findNode(k);       // 2
-    boolean has = p.next.key == k; // 3
-    lock.unlock(); // 4
+    Node<T> p = findNode(k);       // 1
+    boolean has = p.next.key == k; // 2
+    unlockNode(p); // 3
     return has;
   }
 
@@ -99,19 +93,39 @@ class CoarseSet<T> extends AbstractSet<T> {
 
   private Node<T> findNode(int k) {
     Node<T> p = head;
+    lockNode(p);
     while (p.next.key < k)
-      p = p.next;
+      p = nextNode(p);
+    return p;
+  }
+  
+  private void lockNode(Node<T> p) {
+    p.lock();
+    p.next.lock();
+  }
+
+  private void unlockNode(Node<T> p) {
+    p.next.unlock();
+    p.unlock();
+  }
+
+  private Node<T> nextNode(Node<T> p) {
+    p.unlock();
+    p = p.next;
+    p.next.lock();
     return p;
   }
 
   @Override
   public Iterator<T> iterator() {
     Collection<T> a = new ArrayList<>();
-    Node<T> p = head.next;
-    while (p.next != null) {
-      a.add(p.value);
-      p = p.next;
+    Node<T> p = head;
+    lockNode(p);
+    while (p.next.next != null) {
+      a.add(p.next.value);
+      p = nextNode(p);
     }
+    unlockNode(p);
     return a.iterator();
   }
 
