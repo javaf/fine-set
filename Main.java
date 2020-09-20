@@ -44,10 +44,8 @@ class Main {
 
   static void populateSet() {
     set = new FineSet<>();
-    for(int i=0; i<NUM; i++) {
-      log("Set: "+set);
+    for(int i=0; i<NUM; i++)
       set.add(i);
-    }
   }
 
   static boolean validateSet() {
