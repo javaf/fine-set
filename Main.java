@@ -43,7 +43,7 @@ class Main {
   }
 
   static void populateSet() {
-    set = new CoarseSet<>();
+    set = new FineSet<>();
     for(int i=0; i<NUM; i++)
       set.add(i);
   }

@@ -19,25 +19,23 @@ import java.util.concurrent.atomic.*;
 // main advantage of this algorithms is that its
 // obviously correct.
 
-class CoarseSet<T> extends AbstractSet<T> {
+class FineSet<T> extends AbstractSet<T> {
   final AtomicInteger size;
   final Node<T> head;
-  // lock: common (coarse) lock for set
   // size: number of items in set
   // head: points to begin of nodes in set
 
-  public CoarseSet() {
+  public FineSet() {
     size = new AtomicInteger(0);
     head = new Node<>(null, Integer.MIN_VALUE);
     head.next = new Node<>(null, Integer.MAX_VALUE);
   }
 
   // 1. Create new node beforehand.
-  // 2. Acquire lock before any action.
-  // 3. Find node after which to insert.
-  // 4. Add node, only if key is unique.
-  // 5. Increment size if node was added.
-  // 6. Release the lock.
+  // 2. Find node after which to insert.
+  // 3. Add node, only if key is unique.
+  // 4. Increment size if node was added.
+  // 5. Unlock node pairs locked by find.
   @Override
   public boolean add(T v) {
     Node<T> x = new Node<>(v);    // 1
@@ -48,11 +46,10 @@ class CoarseSet<T> extends AbstractSet<T> {
     return done;
   }
 
-  // 1. Acquire lock before any action.
-  // 2. Find node after which to remove.
-  // 3. Remove node, only if key matches.
-  // 4. Decrement size if node was removed.
-  // 5. Release the lock.
+  // 1. Find node after which to remove.
+  // 2. Remove node, only if key matches.
+  // 3. Decrement size if node was removed.
+  // 4. Unlock node pairs locked by find.
   @Override
   public boolean remove(Object v) {
     int k = v.hashCode();
@@ -63,10 +60,9 @@ class CoarseSet<T> extends AbstractSet<T> {
     return done;
   }
 
-  // 1. Acquire lock before any action.
-  // 2. Find node previous to search key.
-  // 3. Check if next node matches search key.
-  // 4. Release the lock.
+  // 1. Find node previous to search key.
+  // 2. Check if next node matches search key.
+  // 3. Unlock node pairs locked by find.
   @Override
   public boolean contains(Object v) {
     int k = v.hashCode();
@@ -76,51 +72,65 @@ class CoarseSet<T> extends AbstractSet<T> {
     return has;
   }
 
+  // 1. Check if already exists.
+  // 2. Insert new node in between.
   private boolean addNode(Node<T> p, Node<T> x) {
     Node<T> q = p.next;
-    if (q.key == x.key) return false;
-    x.next = q;
-    p.next = x;
+    if (q.key == x.key) return false; // 1
+    x.next = q; // 2
+    p.next = x; // 2
     return true;
   }
 
+  // 1. Check if does not exist.
+  // 2. Detach the node.
   private boolean removeNode(Node<T> p, int k) {
     Node<T> q = p.next;
-    if (q.key != k) return false;
-    p.next = q.next;
+    if (q.key != k) return false; // 1
+    p.next = q.next; // 2
     return true;
   }
 
+  // 1. Lock first node pair.
+  // 2. As long as key too low:
+  // 3. Traverse in hand-holding fashion.
   private Node<T> findNode(int k) {
-    Node<T> p = head;
-    lockNode(p);
-    while (p.next.key < k)
-      p = nextNode(p);
+    Node<T> p = lockNode(head); // 1
+    while (p.next.key < k) // 2
+      p = nextNode(p);     // 3
     return p;
   }
   
-  private void lockNode(Node<T> p) {
-    p.lock();
-    p.next.lock();
+  // 1. Lock 1st node.
+  // 2. Lock 2nd node.
+  private Node<T> lockNode(Node<T> p) {
+    p.lock();      // 1
+    p.next.lock(); // 2
+    return p;
   }
 
-  private void unlockNode(Node<T> p) {
-    p.next.unlock();
-    p.unlock();
+  // 1. Unlock 2nd node.
+  // 2. Unlock 1st node.
+  private Node<T> unlockNode(Node<T> p) {
+    p.next.unlock(); // 1
+    p.unlock();      // 2
+    return p;
   }
 
+  // 1. Unlock 1st node.
+  // 2. Shift to next node.
+  // 3. Lock 3rd node.
   private Node<T> nextNode(Node<T> p) {
-    p.unlock();
-    p = p.next;
-    p.next.lock();
+    p.unlock();    // 1
+    p = p.next;    // 2
+    p.next.lock(); // 3
     return p;
   }
 
   @Override
   public Iterator<T> iterator() {
     Collection<T> a = new ArrayList<>();
-    Node<T> p = head;
-    lockNode(p);
+    Node<T> p = lockNode(head);
     while (p.next.next != null) {
       a.add(p.next.value);
       p = nextNode(p);
